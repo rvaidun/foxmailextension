@@ -1,0 +1,37 @@
+{
+    "manifest_version": 3,
+    "name": "GmailJS Node Boilerplate Extension",
+    "short_name": "gmailjsnode",
+    "version": "1.1",
+    "author": "Jostein Kjønigsen <jostein@kjonigsen.net>",
+    "description": "A minimal extension which demonstrates how to create a extension with Gmail.JS and NodeJS-based bundling.",
+    "content_scripts": [
+        {
+            "matches": [
+                "*://mail.google.com/*"
+            ],
+            "js": [
+                "src/extensionInjector.js"
+            ],
+            "run_at": "document_start"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "dist/gmailJsLoader.js",
+                "dist/extension.js",
+                "dist/gmailJsLoader.js.map",
+                "dist/extension.js.map"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "host_permissions": [
+        "https://*/*"
+    ]
+    // add images
+    // "icons": {
+}
