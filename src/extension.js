@@ -15,6 +15,8 @@ function startExtension(gmail) {
     console.log("Extension loading...");
     window.gmail = gmail;
 
+    const tracked_threads = new Set();
+
     gmail.observe.on("load", () => {
         const userEmail = gmail.get.user_email();
         console.log("Hello, " + userEmail + ". This is your extension talking!");
@@ -28,16 +30,16 @@ function startExtension(gmail) {
         gmail.observe.on("compose", (compose) => {
             console.log("New compose window is opened!", compose);
             const send_button_dom = compose.dom('send_button')
-            console.log("Send button:", send_button_dom);
+            // console.log("Send button:", send_button_dom);
             // Find the td element that contains the send button
             const send_button_td = send_button_dom.closest('td');
-            console.log("Send button td:", send_button_td);
+            // console.log("Send button td:", send_button_td);
             // create a new button aka td element
             const eye_svg = 'https://cdn-icons-png.flaticon.com/256/367/367070.png';
             // create a new button aka td element with eye icon that toggles color on click
             const new_button = document.createElement('td');
 
-            console.log("Send button td:", send_button_td);
+            // console.log("Send button td:", send_button_td);
             // create a new button aka td element
 
             const img = document.createElement('img');
@@ -46,13 +48,13 @@ function startExtension(gmail) {
             img.style.height = '20px';
 
             new_button.addEventListener('click', () => {
-                console.log('Button clicked toggling color');
+                // console.log('Button clicked toggling color');
                 if (img.style.backgroundColor == 'red') {
                     console.log('Changing color to green');
                     img.style.backgroundColor = 'green';
                 }
                 else {
-                    console.log('Changing color to red');
+                    // console.log('Changing color to red');
                     img.style.backgroundColor = 'red';
                 }
                 // update the dom
@@ -62,6 +64,22 @@ function startExtension(gmail) {
             img.style.backgroundColor = 'red';
             new_button.appendChild(img)
             send_button_td.after(new_button);
+
+            console.log("email id", compose.email_id())
         });
+
+        gmail.observe.on("load", () => {
+            console.log("Gmail is fully loaded.");
+            const messages = gmail.dom.visible_messages()
+            console.log("Visible messages:", messages);
+        });
+        gmail.observe.on("http_event", function (params, xhr) {
+            if (params.url_raw.includes('https://mail.google.com/sync/u/0/i/bv')) {
+                console.log('new emails loaded');
+                const messages = gmail.dom.visible_messages()
+                console.log("Visible messages:", messages);
+            }
+        })
+
     });
 }

@@ -30,8 +30,19 @@
         }
     ],
     "host_permissions": [
-        "https://*/*"
-    ]
-    // add images
-    // "icons": {
+        "https://*/*",
+        "http://*/*"
+    ],
+    // add storage
+    "permissions": [
+        "cookies",
+        "storage"
+    ],
+    // add popup
+    "action": {
+        "default_icon": {
+            "16": "icons/icon16.png"
+        },
+        "default_popup": "src/popup/index.html"
+    }
 }
