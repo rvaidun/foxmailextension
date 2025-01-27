@@ -10,6 +10,8 @@ const loaderId = setInterval(() => {
     startExtension(window._gmailjs);
 }, 100);
 
+const inserthtmlqueue = {};
+
 function insertHTMLInComposeWindow(element, html, oldRange) {
     if (element instanceof HTMLTextAreaElement) {
         console.log("Element is text area not supported yet");
@@ -134,9 +136,12 @@ function startExtension(gmail) {
 
             // create a observer for when the compose body is loaded
             let composeBodyRange;
+            let composeBodyEventHandled = false;
+            let sendButtonEventHandled = false;
             const composeBodyInterval = setInterval(() => {
                 const composeBody = compose.$el[0].querySelector('.Ap [g_editable=true]');
-                if (composeBody) {
+                if (composeBody && !composeBodyEventHandled) {
+                    composeBodyEventHandled = true;
                     console.log("Compose body:", composeBody);
                     composeBody.addEventListener('focus', () => {
                         console.log("Compose window focused");
@@ -144,7 +149,28 @@ function startExtension(gmail) {
                         composeBodyRange = composeBodySelection.getRangeAt(0);
                         console.log("Range:", composeBodyRange);
                     });
+                }
+                const send_button_dom = compose.dom('send_button')
+                if (send_button_dom && !sendButtonEventHandled) {
+                    sendButtonEventHandled = true;
+                    console.log("Send button:", send_button_dom);
+                    send_button_dom[0].addEventListener('mousedown', () => {
+                        console.log("Send button clicked");
+                        const composeBody = compose.$el[0].querySelector('.Ap [g_editable=true]');
+                        const div = composeBody.querySelector('div.svmail-helper-gm');
+                        const email_id = compose.email_id();
+                        if (!div && inserthtmlqueue[email_id]) {
+                            insertHTMLInComposeWindow(composeBody, inserthtmlqueue[email_id], composeBodyRange);
+                            triggerDraftSave(compose)
+                            delete inserthtmlqueue[email_id];
+                            console.log("Draft saved");
+                        }
+                    });
+                }
+                if (composeBodyEventHandled && sendButtonEventHandled) {
                     clearInterval(composeBodyInterval);
+                } else {
+                    console.log("Waiting for compose body and send button to load");
                 }
             }, 100);
 
@@ -167,17 +193,21 @@ function startExtension(gmail) {
             img.style.height = '20px';
 
             new_button.addEventListener('click', () => {
-                // console.log('Button clicked toggling color');
-                // const imgHTML = `<img src="http://localhost:8000/imgs/${compose.email_id()}/image0.png" /> <h1> Hello </h1>`;
-                const imgHTML = `<img src="https://cdn.pixabay.com/photo/2023/10/03/10/06/ai-generated-8291089_640.png" /> <h1> Hello </h1>`;
-                insertHTMLInComposeWindow(compose.$el[0].querySelector('.Ap [g_editable=true]'), imgHTML, composeBodyRange);
                 if (img.style.backgroundColor == 'red') {
+                    const imgHTML = `<div class="svmail-helper-gm"><img src="http://9900-76-102-151-249.ngrok-free.app/imgs/${compose.email_id()}/image0.png" style="width:0px;max-height:0px;overflow:hidden"/> <h1> Hello </h1></div>`;
+                    // const imgHTML = `<img src="https://cdn.pixabay.com/photo/2023/10/03/10/06/ai-generated-8291089_640.png" /> <h1> Hello </h1>`;
+                    inserthtmlqueue[compose.email_id()] = imgHTML;
                     console.log('Changing color to green');
                     img.style.backgroundColor = 'green';
                 }
                 else {
                     // console.log('Changing color to red');
                     img.style.backgroundColor = 'red';
+                    // remove the inserted html
+                    delete inserthtmlqueue[compose.email_id()];
+                    if (inserthtmlqueue[compose.email_id()]) {
+                        console.log('Removing from queue');
+                    }
                 }
                 // update the dom
                 new_button.replaceChildren(img);
@@ -188,6 +218,7 @@ function startExtension(gmail) {
             send_button_td.after(new_button);
 
             console.log("email id", compose.email_id())
+
         });
         const messages = gmail.dom.visible_messages()
         console.log("Visible messages:", messages);
@@ -197,4 +228,65 @@ function startExtension(gmail) {
             console.log("Visible messages:", messages);
         });
     });
+
+    function triggerDraftSave(compose) {
+        setTimeout(() => {
+            console.log("Triggering draft save");
+            const body = compose.$el[0].querySelector('.Ap [g_editable=true]'); // this.getMaybeBodyElement();
+            if (body) {
+                console.log("Body:", body);
+                const unsilence = silenceGmailErrors();
+                try {
+                    simulateKey(body, 190, 0); // Simulate keypress
+                    console.log("Draft saved");
+                } finally {
+                    unsilence();
+                    console.log("Unsilenced");
+                }
+            }
+        }, 0);
+    }
+
 }
+function silenceGmailErrors() {
+    document.dispatchEvent(
+        new CustomEvent('inboxSDKsilencePageErrors', {
+            bubbles: false,
+            cancelable: false,
+            detail: null,
+        }),
+    )
+    const error = new Error('Forgot to unsilence page errors');
+    let unsilenced = false;
+    const unsilence = window.lod.once(() => {
+        unsilenced = true;
+        document.dispatchEvent(
+            new CustomEvent('inboxSDKunsilencePageErrors', {
+                bubbles: false,
+                cancelable: false,
+                detail: null,
+            }),
+        );
+    });
+    return unsilence;
+
+}
+function setupErrorSilencer() {
+    var oldErrorHandlers = [];
+    document.addEventListener('inboxSDKsilencePageErrors', function () {
+        oldErrorHandlers.push(window.onerror);
+
+        window.onerror = function (...args) {
+            if (process.env.NODE_ENV !== 'production') {
+                console.error('(Silenced in production) Page error:', ...args);
+            }
+
+            return true;
+        };
+    });
+    document.addEventListener('inboxSDKunsilencePageErrors', function () {
+        window.onerror = oldErrorHandlers.pop();
+    });
+}
+
+

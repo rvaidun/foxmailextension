@@ -12,6 +12,7 @@
 
 const GmailFactory = require("gmail-js");
 const Kefir = require("kefir");
+const lodash = require("lodash");
 import $ from "jquery";
 
 if ("trustedTypes" in window) {
@@ -28,3 +29,4 @@ if ("trustedTypes" in window) {
 // extensions loaded at the same time!
 window._gmailjs = window._gmailjs || new GmailFactory.Gmail($);
 window.kefir = Kefir;
+window.lod = lodash;

@@ -30,12 +30,6 @@ function load(patterns) {
 }
 
 
-const patternsReference = [
-    "*://*/*localhost:8000*", "*://*/*"
-];
-const actualhost = "https://cdn.pixabay.com/photo/2023/10/03/10/06/ai-generated-8291089_640.png"
-
 const patterns = [
-    "*://*/*cdn.pixabay.com/photo*", "*://cdn.pixabay.com/photo*", "*://cdn.pixabay.com/photo*", "*://*/*localhost:8000*",
-]
+    "*://*/*9900-76-102-151-249.ngrok-free.app/imgs/*", "*://9900-76-102-151-249.ngrok-free.app/imgs/*"];
 load(patterns);
