@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', async function () {
     // get session_id cookie from localhost:8000
-    const session_id = await browser.cookies.get({ url: 'http://localhost:8000', name: 'session_id' })
     console.log('Session ID:', session_id);
     const userInfo = document.getElementById('user-info');
     fetch('http://localhost:8000/userinfo', {

@@ -8,4 +8,5 @@ function addScript(src) {
 }
 
 addScript("dist/gmailJsLoader.js");
+addScript("dist/kefir.min.js");
 addScript("dist/extension.js");

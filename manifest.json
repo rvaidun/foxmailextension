@@ -22,7 +22,8 @@
                 "dist/gmailJsLoader.js",
                 "dist/extension.js",
                 "dist/gmailJsLoader.js.map",
-                "dist/extension.js.map"
+                "dist/extension.js.map",
+                "kefir.min.js"
             ],
             "matches": [
                 "<all_urls>"
