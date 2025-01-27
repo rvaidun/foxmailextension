@@ -11,6 +11,7 @@
 // Let the "big" extension bundle load separately!
 
 const GmailFactory = require("gmail-js");
+const Kefir = require("kefir");
 import $ from "jquery";
 
 if ("trustedTypes" in window) {
@@ -26,3 +27,4 @@ if ("trustedTypes" in window) {
 // don't mess up too bad if we have several gmail.js-based
 // extensions loaded at the same time!
 window._gmailjs = window._gmailjs || new GmailFactory.Gmail($);
+window.kefir = Kefir;

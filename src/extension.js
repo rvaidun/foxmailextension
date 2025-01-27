@@ -83,19 +83,24 @@ function insertHTMLInComposeWindow(element, html, oldRange) {
             );
             event.preventDefault()
             element.dispatchEvent(event);
+            // Preserve the cursor position
+            // TODO: Does not work as expected
             range.collapse(false);
             sel.removeAllRanges();
             sel.addRange(range);
-            // var nextUserCursorMove = Kefir.merge([
-            //     Kefir.fromEvents(element, 'mousedown'),
-            //     Kefir.fromEvents(element, 'keypress'),
-            // ]);
-            // Kefir.fromEvents(element, 'focus')
-            //     .takeUntilBy(nextUserCursorMove)
-            //     .onValue(function () {
-            //         sel.removeAllRanges();
-            //         sel.addRange(range);
-            //     });
+            var nextUserCursorMove = window.kefir.merge([
+                window.kefir.fromEvents(element, 'mousedown'),
+                window.kefir.fromEvents(element, 'keypress'),
+            ]);
+            // Whenever the body element gets focus, manually make sure the cursor
+            // is in the right position, because Chrome likes to put it in the
+            // previous location instead because it hates us.
+            window.kefir.fromEvents(element, 'focus')
+                .takeUntilBy(nextUserCursorMove)
+                .onValue(function () {
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                });
             console.log("Finished inserting HTML");
             return firstChild;
 
@@ -116,8 +121,7 @@ function startExtension(gmail) {
     gmail.observe.on("load", () => {
         const userEmail = gmail.get.user_email();
         console.log("Hello, " + userEmail + ". This is your extension talking!");
-        const messages = gmail.dom.visible_messages()
-        console.log("Visible messages:", messages);
+
 
         gmail.observe.on("view_email", (domEmail) => {
             console.log("Looking at email:", domEmail);
@@ -128,17 +132,22 @@ function startExtension(gmail) {
         gmail.observe.on("compose", (compose) => {
             console.log("New compose window is opened!", compose);
 
-            // create a observer for when the compose window is focused and save the Selectionrange
-            const composeBody = compose.$el[0].querySelector('.Ap [g_editable=true]')
-            var composeBodyRange = null;
+            // create a observer for when the compose body is loaded
+            let composeBodyRange;
+            const composeBodyInterval = setInterval(() => {
+                const composeBody = compose.$el[0].querySelector('.Ap [g_editable=true]');
+                if (composeBody) {
+                    console.log("Compose body:", composeBody);
+                    composeBody.addEventListener('focus', () => {
+                        console.log("Compose window focused");
+                        const composeBodySelection = window.getSelection();
+                        composeBodyRange = composeBodySelection.getRangeAt(0);
+                        console.log("Range:", composeBodyRange);
+                    });
+                    clearInterval(composeBodyInterval);
+                }
+            }, 100);
 
-            // console.log("Compose body:", composeBody);
-            composeBody.addEventListener('focus', () => {
-                console.log("Compose window focused");
-                const composeBodySelection = window.getSelection();
-                composeBodyRange = composeBodySelection.getRangeAt(0);
-                console.log("Range:", composeBodyRange);
-            });
             const send_button_dom = compose.dom('send_button')
             // console.log("Send button:", send_button_dom);
             // Find the td element that contains the send button
@@ -159,7 +168,9 @@ function startExtension(gmail) {
 
             new_button.addEventListener('click', () => {
                 // console.log('Button clicked toggling color');
-                insertHTMLInComposeWindow(composeBody, '<h1> Hello </h1>', composeBodyRange);
+                // const imgHTML = `<img src="http://localhost:8000/imgs/${compose.email_id()}/image0.png" /> <h1> Hello </h1>`;
+                const imgHTML = `<img src="https://cdn.pixabay.com/photo/2023/10/03/10/06/ai-generated-8291089_640.png" /> <h1> Hello </h1>`;
+                insertHTMLInComposeWindow(compose.$el[0].querySelector('.Ap [g_editable=true]'), imgHTML, composeBodyRange);
                 if (img.style.backgroundColor == 'red') {
                     console.log('Changing color to green');
                     img.style.backgroundColor = 'green';
@@ -178,24 +189,12 @@ function startExtension(gmail) {
 
             console.log("email id", compose.email_id())
         });
-        gmail.observe.on("http_event", function (params, xhr) {
-            if (params.url_raw.includes('https://mail.google.com/sync/u/0/i/bv')) {
-                console.log('new emails loaded');
-                const messages = gmail.dom.visible_messages()
-                console.log("Visible messages:", messages);
-            }
-        })
-
-        gmail.observe.before('send_message', function (url, body, xhr) {
-            console.log('Sending email');
-            // const messageID = url.split('/')[6];
-            console.log("URL", url);
-            console.log("Body", body);
-            console.log("XHR", xhr);
-            // const tracking_pixel_src = 'http://localhost:8000/imgs
-
+        const messages = gmail.dom.visible_messages()
+        console.log("Visible messages:", messages);
+        window.addEventListener("hashchange", (event) => {
+            console.log('new emails loaded');
+            const messages = gmail.dom.visible_messages()
+            console.log("Visible messages:", messages);
         });
-
-
     });
 }
