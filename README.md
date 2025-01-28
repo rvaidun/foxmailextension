@@ -5,4 +5,4 @@ This repo contains a webextension that adds read receipts to emails sent from Gm
 browser-extension using
 the [gmail.js](https://github.com/KartikTalwar/gmail.js/) library. It also uses a lot of code from [InboxSDK](https://github.com/inboxSDK/inboxsdk).
 
-The backend is written in Go and uses the [Gmail API](https://developers.google.com/gmail/api/).
+The backend is written in Go and uses the [Gmail API](https://developers.google.com/gmail/api/). The repo for the backend is located [here](https://github.com/rvaidun/svmailbackend)
