@@ -14,6 +14,7 @@
   "author": "Jostein kjønigsen",
   "license": "ISC",
   "dependencies": {
+    "asap": "^2.0.6",
     "gmail-js": "^1.1.14",
     "jquery": "^4.0.0-beta",
     "kefir": "^3.8.8",

@@ -1,5 +1,5 @@
 "use strict";
-
+const asap = require("asap");
 // loader-code: wait until gmailjs has finished loading, before triggering actual extensiode-code.
 const loaderId = setInterval(() => {
     if (!window._gmailjs) {
@@ -11,6 +11,7 @@ const loaderId = setInterval(() => {
 }, 100);
 
 const inserthtmlqueue = {};
+const tracked_threads = {}
 
 function insertHTMLInComposeWindow(element, html, oldRange) {
     if (element instanceof HTMLTextAreaElement) {
@@ -128,7 +129,7 @@ function startExtension(gmail) {
             console.log("Email data:", emailData);
         });
 
-        gmail.observe.on("compose", (compose) => {
+        gmail.observe.on("compose", (compose, composeType) => {
             console.log("New compose window is opened!", compose);
 
             // create a observer for when the compose body is loaded
@@ -149,10 +150,23 @@ function startExtension(gmail) {
                 }
                 const send_button_dom = compose.dom('send_button')
                 if (send_button_dom && !sendButtonEventHandled) {
-                    sendButtonEventHandled = true;
-                    console.log("Send button:", send_button_dom);
-                    send_button_dom[0].addEventListener('mousedown', () => {
-                        console.log("Send button clicked");
+                    let sendAndArchive;
+                    if (composeType === 'reply') {
+                        sendAndArchive = compose.$el[0].querySelector('.IZ .Up div > div[role=button].Uo:not([aria-haspopup=true]):not([class^=inboxsdk_])')
+                    } else {
+                        sendAndArchive = null;
+                    }
+                    const sendButtonDom = compose.$el[0].querySelector('.IZ .Up div > div[role=button]:not(.Uo):not([aria-haspopup=true]):not([class^=inboxsdk_])')
+                    console.log("Send button dom IS:", sendButtonDom);
+                    console.log("Send and archive IS:", sendAndArchive);
+                    const presend_stream = getGmailPresendStream({
+                        element: compose.$el[0],
+                        sendButton: sendButtonDom,
+                        sendAndArchive: sendAndArchive,
+                    })
+
+                    presend_stream.onEvent((event) => {
+                        console.log("Presend event:", event);
                         const composeBody = compose.$el[0].querySelector('.Ap [g_editable=true]');
                         const div = composeBody.querySelector('div.svmail-helper-gm');
                         const email_id = compose.email_id();
@@ -163,6 +177,20 @@ function startExtension(gmail) {
                             console.log("Draft saved");
                         }
                     });
+                    sendButtonEventHandled = true;
+                    console.log("Send button:", send_button_dom);
+                    // send_button_dom[0].addEventListener('mousedown', () => {
+                    //     console.log("Send button clicked");
+                    //     const composeBody = compose.$el[0].querySelector('.Ap [g_editable=true]');
+                    //     const div = composeBody.querySelector('div.svmail-helper-gm');
+                    //     const email_id = compose.email_id();
+                    //     if (!div && inserthtmlqueue[email_id]) {
+                    //         insertHTMLInComposeWindow(composeBody, inserthtmlqueue[email_id], composeBodyRange);
+                    //         triggerDraftSave(compose)
+                    //         delete inserthtmlqueue[email_id];
+                    //         console.log("Draft saved");
+                    //     }
+                    // });
                 }
                 if (composeBodyEventHandled && sendButtonEventHandled) {
                     clearInterval(composeBodyInterval);
@@ -236,7 +264,7 @@ function startExtension(gmail) {
                 console.log("Body:", body);
                 const unsilence = silenceGmailErrors();
                 try {
-                    // simulateKey(body, 190, 0); // Simulate keypress
+                    simulateKey(body, 190, 0); // Simulate keypress
                     console.log("Draft saved");
                 } finally {
                     unsilence();
@@ -245,26 +273,28 @@ function startExtension(gmail) {
             }
         }, 0);
     }
-
     function addReadReceiptToEmail(threads) {
-        const tracked_threads = {}
-        threads.forEach(thread => {
+        console.log("Adding read receipt to email");
+        const new_threads = threads.filter(thread => !tracked_threads[thread.thread_id]);
+        if (new_threads.length == 0) {
+            return;
+        }
+        new_threads.forEach(thread => {
             const thread_data = gmail.new.get.thread_data(thread.thread_id)
             // console.log("Thread data:", thread_data);
-            const tracked_emails = [];
-
             for (const email of thread_data.emails) {
                 if (email.is_draft) {
-                    return;
+                    continue;
                 }
                 // if a link such as 9900-76-102-151-249.ngrok-free.app/imgs/* is present in the email body then add a read receipt
                 if (email.content_html.includes("9900-76-102-151-249.ngrok-free.app/imgs/")) {
                     console.log("Email has read receipt:", email);
-                    tracked_emails.push(email.id);
+                    // tracked_emails.push(email.id);
+                    // only add the first email in the thread
+                    tracked_threads[thread.thread_id] = { emails: [email.id], thread_dom: thread };
+                    break;
                 }
             }
-            tracked_threads[thread.thread_id] = { emails: tracked_emails, thread_dom: thread };
-            // tracked_threads[thread.thread_id] = tracked_emails;
         });
         console.log("Tracked threads:", tracked_threads);
         // build a request to the server to get the read status of the emails
@@ -272,6 +302,9 @@ function startExtension(gmail) {
         const url_builder = new URLSearchParams();
         const all_email_ids = [];
         for (const thread_id in tracked_threads) {
+            if (tracked_threads[thread_id].hasReadStatus) {
+                continue;
+            }
             tracked_threads[thread_id].emails.forEach(email_id => {
                 all_email_ids.push(email_id);
             });
@@ -294,6 +327,7 @@ function startExtension(gmail) {
                 const attachmentDiv = thread_dom.querySelector('td.yf.xY');
                 console.log("Attachment div:", attachmentDiv);
                 const readStatusDiv = createReadStatusDiv(email.viewed_time);
+                tracked_threads[thread_id].hasReadStatus = true;
                 attachmentDiv.appendChild(readStatusDiv);
                 // remove maxWidth from the attachment div
                 attachmentDiv.style.maxWidth = 'none';
@@ -334,9 +368,15 @@ function startExtension(gmail) {
 function createReadStatusDiv(unixtime) {
     const readStatusDiv = document.createElement('div');
     // convert the unix timestamp to human readable format
-    const date = new Date(unixtime * 1000);
-    const human_date = date.toLocaleString();
-    readStatusDiv.innerHTML = `<p>Last read at ${human_date}</p>`
+    if (!unixtime) {
+        readStatusDiv.innerHTML = `<p>Not yet read</p>`
+        readStatusDiv.className = 'svmail-read-status';
+        return readStatusDiv;
+    } else {
+        const date = new Date(unixtime * 1000);
+        const human_date = date.toLocaleString();
+        readStatusDiv.innerHTML = `<p>Last read at ${human_date}</p>`
+    }
     readStatusDiv.className = 'svmail-read-status';
     return readStatusDiv;
 }
@@ -379,5 +419,131 @@ function setupErrorSilencer() {
     document.addEventListener('inboxSDKunsilencePageErrors', function () {
         window.onerror = oldErrorHandlers.pop();
     });
+}
+
+const dispatchCancel = (element) => {
+    asap(() => {
+        element.dispatchEvent(
+            new CustomEvent('inboxSDKsendCanceled', {
+                bubbles: false,
+                cancelable: false,
+                detail: null,
+            }),
+        );
+    });
+};
+
+function getGmailPresendStream({ element, sendButton, sendAndArchive }) {
+    const eventStream = {
+        listeners: [],
+        onEvent(callback) {
+            this.listeners.push(callback);
+        },
+        emit(event) {
+            this.listeners.forEach((listener) => listener(event));
+        },
+    };
+
+    const handleKeydown = (domEvent) => {
+        if ((domEvent.ctrlKey || domEvent.metaKey) && (domEvent.which === 13 || domEvent.keyCode === 13)) {
+            eventStream.emit(domEvent);
+        } else if (
+            ([13, 32].indexOf(domEvent.which) > -1 || [13, 32].indexOf(domEvent.keyCode) > -1) &&
+            ((sendButton && sendButton.contains(domEvent.target)) ||
+                (sendAndArchive && sendAndArchive.contains(domEvent.target)))
+        ) {
+            eventStream.emit(domEvent);
+        }
+    };
+
+    const handleClick = (domEvent) => {
+        if (
+            (sendButton && sendButton.contains(domEvent.target)) ||
+            (sendAndArchive && sendAndArchive.contains(domEvent.target))
+        ) {
+            eventStream.emit(domEvent);
+        }
+    };
+
+    element.addEventListener('keydown', handleKeydown, true);
+    element.addEventListener('click', handleClick, true);
+
+    return {
+        onEvent(callback) {
+            eventStream.onEvent((domEvent) => {
+                if (element.hasAttribute('data-inboxsdk-send-replaced')) {
+                    domEvent.preventDefault();
+                    domEvent.stopPropagation();
+                    domEvent.stopImmediatePropagation();
+                    return;
+                }
+
+                callback({
+                    eventName: 'presending',
+                    data: {
+                        cancel() {
+                            domEvent.preventDefault();
+                            domEvent.stopPropagation();
+                            domEvent.stopImmediatePropagation();
+                            dispatchCancel(element);
+                        },
+                    },
+                });
+            });
+        },
+        destroy() {
+            element.removeEventListener('keydown', handleKeydown, true);
+            element.removeEventListener('click', handleClick, true);
+        },
+    };
+}
+
+function simulateKey(element, keyCode, charCode) {
+    const ctrlKey = false
+    const metaKey = false
+    const altKey = false
+    const shiftKey = false
+
+    triggerRelayEvent(element, {
+        type: "keydown",
+        bubbles: true,
+        cancelable: true,
+        props: {
+            keyCode,
+            charCode,
+            ctrlKey,
+            metaKey,
+            altKey,
+            shiftKey
+        }
+    })
+
+    triggerRelayEvent(element, {
+        type: "keypress",
+        bubbles: true,
+        cancelable: true,
+        props: {
+            keyCode,
+            charCode,
+            ctrlKey,
+            metaKey,
+            altKey,
+            shiftKey
+        }
+    })
+
+    triggerRelayEvent(element, {
+        type: "keyup",
+        bubbles: true,
+        cancelable: true,
+        props: {
+            keyCode,
+            charCode,
+            ctrlKey,
+            metaKey,
+            altKey,
+            shiftKey
+        }
+    })
 }
 
