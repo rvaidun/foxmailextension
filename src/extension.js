@@ -117,9 +117,6 @@ function insertHTMLInComposeWindow(element, html, oldRange) {
 function startExtension(gmail) {
     console.log("Extension loading...");
     window.gmail = gmail;
-
-    const tracked_threads = new Set();
-
     gmail.observe.on("load", () => {
         const userEmail = gmail.get.user_email();
         console.log("Hello, " + userEmail + ". This is your extension talking!");
@@ -222,10 +219,12 @@ function startExtension(gmail) {
         });
         const messages = gmail.dom.visible_messages()
         console.log("Visible messages:", messages);
+        addReadReceiptToEmail(messages);
         window.addEventListener("hashchange", (event) => {
             console.log('new emails loaded');
             const messages = gmail.dom.visible_messages()
             console.log("Visible messages:", messages);
+            addReadReceiptToEmail(messages);
         });
     });
 
@@ -237,7 +236,7 @@ function startExtension(gmail) {
                 console.log("Body:", body);
                 const unsilence = silenceGmailErrors();
                 try {
-                    simulateKey(body, 190, 0); // Simulate keypress
+                    // simulateKey(body, 190, 0); // Simulate keypress
                     console.log("Draft saved");
                 } finally {
                     unsilence();
@@ -247,6 +246,99 @@ function startExtension(gmail) {
         }, 0);
     }
 
+    function addReadReceiptToEmail(threads) {
+        const tracked_threads = {}
+        threads.forEach(thread => {
+            const thread_data = gmail.new.get.thread_data(thread.thread_id)
+            // console.log("Thread data:", thread_data);
+            const tracked_emails = [];
+
+            for (const email of thread_data.emails) {
+                if (email.is_draft) {
+                    return;
+                }
+                // if a link such as 9900-76-102-151-249.ngrok-free.app/imgs/* is present in the email body then add a read receipt
+                if (email.content_html.includes("9900-76-102-151-249.ngrok-free.app/imgs/")) {
+                    console.log("Email has read receipt:", email);
+                    tracked_emails.push(email.id);
+                }
+            }
+            tracked_threads[thread.thread_id] = { emails: tracked_emails, thread_dom: thread };
+            // tracked_threads[thread.thread_id] = tracked_emails;
+        });
+        console.log("Tracked threads:", tracked_threads);
+        // build a request to the server to get the read status of the emails
+        // send all the tracked email ids to the server
+        const url_builder = new URLSearchParams();
+        const all_email_ids = [];
+        for (const thread_id in tracked_threads) {
+            tracked_threads[thread_id].emails.forEach(email_id => {
+                all_email_ids.push(email_id);
+            });
+        }
+        url_builder.append('email_ids', all_email_ids.join(','));
+        const url = `https://9900-76-102-151-249.ngrok-free.app/read-receipt?${url_builder.toString()}`;
+        console.log("URL:", url);
+
+        fetch(url).then(response => response.json()).then(data => {
+            console.log("Read receipt data:", data);
+            data.forEach(email => {
+                const email_data = gmail.new.get.email_data(email.message_id);
+                console.log("Email data:", email_data);
+                const thread_id = email_data.thread_id;
+                console.log("Email thread id:", thread_id);
+
+                const thread_dom = tracked_threads[thread_id].thread_dom.$el[0];
+                console.log("Thread dom:", thread_dom);
+
+                const attachmentDiv = thread_dom.querySelector('td.yf.xY');
+                console.log("Attachment div:", attachmentDiv);
+                const readStatusDiv = createReadStatusDiv(email.viewed_time);
+                attachmentDiv.appendChild(readStatusDiv);
+                // remove maxWidth from the attachment div
+                attachmentDiv.style.maxWidth = 'none';
+                // update the DOM
+                // create a mutation observer to observe changes in the attachment div
+                // if the class svmail-read-status ever gets removed then add it back
+                const observer = new MutationObserver((mutationsList, observer) => {
+                    console.log("Mutation observed");
+                    console.log(mutationsList);
+                    for (const mutation of mutationsList) {
+                        if (mutation.type === 'childList') {
+                            console.log("Child list mutation");
+                            const new_thread_dom = gmail.dom.visible_messages().find(thread => thread.thread_id == thread_id).$el[0];
+                            console.log('A child node has been added or removed.', thread_dom);
+                            if (!new_thread_dom.querySelector('div.svmail-read-status')) {
+                                console.log("Read status div not found",);
+                                const newReadStatusDiv = createReadStatusDiv(email.viewed_time);
+                                const newAttachmentDiv = new_thread_dom.querySelector('td.yf.xY');
+                                newAttachmentDiv.appendChild(newReadStatusDiv);
+                                newAttachmentDiv.style.maxWidth = 'none';
+                                console.log("Read status div added");
+                            } else {
+                                console.log("Read status div found");
+                            }
+                        }
+                    }
+                });
+                console.log("Observing attachment div", attachmentDiv);
+                observer.observe(thread_dom, { attributes: true, childList: true, subtree: true });
+
+
+            })
+        })
+
+    }
+}
+
+function createReadStatusDiv(unixtime) {
+    const readStatusDiv = document.createElement('div');
+    // convert the unix timestamp to human readable format
+    const date = new Date(unixtime * 1000);
+    const human_date = date.toLocaleString();
+    readStatusDiv.innerHTML = `<p>Last read at ${human_date}</p>`
+    readStatusDiv.className = 'svmail-read-status';
+    return readStatusDiv;
 }
 function silenceGmailErrors() {
     document.dispatchEvent(
@@ -288,5 +380,4 @@ function setupErrorSilencer() {
         window.onerror = oldErrorHandlers.pop();
     });
 }
-
 
